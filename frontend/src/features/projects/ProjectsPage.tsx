@@ -127,6 +127,7 @@ export const ProjectsPage: React.FC = () => {
             type="search"
             className="form-control"
             placeholder="Search projects..."
+            aria-label="Search projects"
             value={search}
             onChange={handleSearchChange}
           />
@@ -209,7 +210,7 @@ export const ProjectsPage: React.FC = () => {
         title="Create New Project"
         titleId="create-project-title"
       >
-        {formError && <div className="alert alert-danger">{formError}</div>}
+        {formError && <div className="alert alert-danger" role="alert">{formError}</div>}
         <form onSubmit={handleCreateSubmit}>
           <div className="form-group">
             <label className="form-label" htmlFor="new-project-name">

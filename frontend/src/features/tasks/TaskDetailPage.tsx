@@ -26,7 +26,12 @@ export const TaskDetailPage: React.FC = () => {
   const [staleConflict, setStaleConflict] = useState<Task | null>(null);
 
   // Fetch Project
-  const { data: project } = useQuery({
+  const {
+    data: project,
+    isLoading: isProjectLoading,
+    error: projectError,
+    refetch: refetchProject,
+  } = useQuery({
     queryKey: queryKeys.project(projectId!),
     queryFn: async () => {
       const resp = await apiClient<Project>(`/projects/${projectId}/`);
@@ -65,6 +70,7 @@ export const TaskDetailPage: React.FC = () => {
   const {
     data: historyData,
     isLoading: isHistoryLoading,
+    error: historyError,
     refetch: refetchHistory,
   } = useQuery({
     queryKey: queryKeys.taskHistory(projectId!, taskId!),
@@ -77,6 +83,13 @@ export const TaskDetailPage: React.FC = () => {
     enabled: !!projectId && !!taskId,
     refetchInterval: 15000,
   });
+
+  // Reset local draft/conflict state when navigating between tasks
+  useEffect(() => {
+    setIsDirty(false);
+    setStaleConflict(null);
+    setFormError(null);
+  }, [projectId, taskId]);
 
   // Sync form with loaded task only when not dirty
   useEffect(() => {
@@ -113,11 +126,21 @@ export const TaskDetailPage: React.FC = () => {
       if (err instanceof ApiError) {
         if (err.status === 412) {
           // Stale write conflict: preserve draft, fetch latest server version
-          const fresh = await apiClient<Task>(`/projects/${projectId}/tasks/${taskId}/`);
-          setStaleConflict(fresh.data);
-          setFormError(
-            `Another user updated this task to version ${fresh.data.version}. Your draft has been preserved. Review the current saved values below and reapply your changes.`
-          );
+          try {
+            const fresh = await apiClient<Task>(`/projects/${projectId}/tasks/${taskId}/`);
+            setStaleConflict(fresh.data);
+            queryClient.setQueryData(queryKeys.task(projectId!, taskId!), fresh.data);
+            queryClient.invalidateQueries({ queryKey: queryKeys.taskHistory(projectId!, taskId!) });
+            setFormError(
+              `Another user updated this task to version ${fresh.data.version}. Your draft has been preserved. Review the current saved values below and reapply your changes.`
+            );
+          } catch (fetchErr: any) {
+            if (fetchErr instanceof ApiError && fetchErr.status === 404) {
+              setFormError("This task was deleted or is no longer accessible.");
+            } else {
+              setFormError(err.data.message || "Version conflict detected, and latest task data could not be loaded.");
+            }
+          }
         } else {
           setFormError(err.data.message || "Failed to update task.");
         }
@@ -132,7 +155,7 @@ export const TaskDetailPage: React.FC = () => {
     mutationFn: async () => {
       await apiClient<void>(`/projects/${projectId}/tasks/${taskId}/`, {
         method: "DELETE",
-        expectedVersion: task?.version,
+        expectedVersion: staleConflict ? staleConflict.version : task?.version,
       });
     },
     onSuccess: () => {
@@ -143,23 +166,30 @@ export const TaskDetailPage: React.FC = () => {
     },
     onError: (err: any) => {
       if (err instanceof ApiError) {
+        if (err.status === 412) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.task(projectId!, taskId!) });
+        }
         setFormError(err.data.message || "Failed to delete task.");
+      } else {
+        setFormError("Failed to delete task.");
       }
     },
   });
 
-  if (isTaskLoading) return <LoadingSpinner message="Loading task..." />;
+  if (isTaskLoading || isProjectLoading) return <LoadingSpinner message="Loading task..." />;
 
-  if (taskError) {
+  const combinedError = projectError || taskError;
+  if (combinedError || !task || !project) {
     return (
       <ErrorAlert
-        message={(taskError as any)?.message || "Task not found or deleted."}
-        onRetry={() => refetchTask()}
+        message={(combinedError as any)?.message || "Task not found or deleted."}
+        onRetry={() => {
+          refetchProject();
+          refetchTask();
+        }}
       />
     );
   }
-
-  if (!task || !project) return null;
 
   const isOwner = project.role === "owner";
   const isAssignee = task.assignee?.id === user?.id;
@@ -186,6 +216,10 @@ export const TaskDetailPage: React.FC = () => {
   const handleOwnerSave = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    if (!title.trim()) {
+      setFormError("Task title cannot be blank.");
+      return;
+    }
     const payload: any = {
       title: title.trim(),
       description: desc.trim(),
@@ -237,7 +271,7 @@ export const TaskDetailPage: React.FC = () => {
           </div>
         )}
 
-        {formError && <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{formError}</div>}
+        {formError && <div className="alert alert-danger" role="alert" style={{ marginTop: "1rem" }}>{formError}</div>}
 
         {/* 412 Stale Conflict Banner */}
         {staleConflict && (
@@ -428,6 +462,12 @@ export const TaskDetailPage: React.FC = () => {
           Task History
         </h2>
         {isHistoryLoading && <LoadingSpinner message="Loading history..." />}
+        {historyError && (
+          <ErrorAlert
+            message={(historyError as any)?.message || "Failed to load task history."}
+            onRetry={() => refetchHistory()}
+          />
+        )}
         {historyData && historyData.results.length === 0 && (
           <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>No history recorded yet.</p>
         )}

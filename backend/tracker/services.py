@@ -6,6 +6,13 @@ from tracker.models import Project, Task, ProjectMembership, Tracker, TaskStatus
 from tracker.api.exceptions import ConflictError, StaleWriteError, MemberHasAssignedTasksError
 from django.contrib.auth.models import User
 
+PG_INT32_MAX = 2_147_483_647
+
+
+def _is_valid_user_pk(value: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= PG_INT32_MAX
+
+
 def create_project(*, project_id=None, name: str, description: str = "", owner) -> Project:
     name = (name or "").strip()
     if not name:
@@ -26,14 +33,15 @@ def create_project(*, project_id=None, name: str, description: str = "", owner) 
             raise ValidationError({"id": ["Invalid UUID format."]})
 
     try:
-        project = Project.objects.create(
-            id=project_id,
-            name=name,
-            description=description,
-            owner=owner,
-            version=1,
-            archived=False,
-        )
+        with transaction.atomic():
+            project = Project.objects.create(
+                id=project_id,
+                name=name,
+                description=description,
+                owner=owner,
+                version=1,
+                archived=False,
+            )
         return project
     except IntegrityError:
         raise ConflictError("A project with this ID already exists.")
@@ -182,6 +190,9 @@ def remove_project_member(*, project_id, owner_user, target_user_id: int, expect
         if target_user_id == project.owner_id:
             raise ValidationError({"user_id": ["Cannot remove the project owner."]})
 
+        if not _is_valid_user_pk(target_user_id):
+            raise NotFound("Member not found in this project.")
+
         membership = ProjectMembership.objects.filter(project=project, user_id=target_user_id).first()
         if not membership:
             raise NotFound("Member not found in this project.")
@@ -193,7 +204,7 @@ def remove_project_member(*, project_id, owner_user, target_user_id: int, expect
         if assigned_count > 0:
             raise MemberHasAssignedTasksError(
                 assigned_count=assigned_count,
-                filter_url=f"/projects/{project.id}/tasks/?assignee={target_user_id}",
+                filter_url=f"/projects/{project.id}?assignee={target_user_id}",
             )
 
         membership.delete()
@@ -285,6 +296,8 @@ def update_task(*, project_id, task_id, user, expected_version: int, data: dict,
             if new_assignee_id is None:
                 proposed_assignee = None
             else:
+                if not _is_valid_user_pk(new_assignee_id):
+                    raise ValidationError({"assignee_id": ["Assignee must be the active owner or an active member of this project."]})
                 try:
                     target_user = User.objects.get(id=new_assignee_id)
                 except User.DoesNotExist:
@@ -410,6 +423,8 @@ def create_task(*, project_id, user, task_id=None, title: str, description: str 
 
         assignee = None
         if assignee_id is not None:
+            if not _is_valid_user_pk(assignee_id):
+                raise ValidationError({"assignee_id": ["Assignee must be the active owner or an active member of this project."]})
             try:
                 target_user = User.objects.get(id=assignee_id)
             except User.DoesNotExist:
@@ -433,16 +448,17 @@ def create_task(*, project_id, user, task_id=None, title: str, description: str 
                 raise ValidationError({"id": ["Invalid UUID format."]})
 
         try:
-            task = Task.objects.create(
-                id=task_id,
-                project=project,
-                title=title,
-                description=description,
-                assignee=assignee,
-                status=TaskStatus.TODO,
-                due_date=due_date,
-                version=1,
-            )
+            with transaction.atomic():
+                task = Task.objects.create(
+                    id=task_id,
+                    project=project,
+                    title=title,
+                    description=description,
+                    assignee=assignee,
+                    status=TaskStatus.TODO,
+                    due_date=due_date,
+                    version=1,
+                )
         except IntegrityError:
             raise ConflictError("A task with this ID already exists.")
 

@@ -40,6 +40,9 @@ export function formatChangeText(field: string, delta: { old: any; new: any }): 
 export function formatEventDateTime(isoString: string): string {
   try {
     const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) {
+      return isoString;
+    }
     return date.toLocaleString(undefined, {
       dateStyle: "medium",
       timeStyle: "short",

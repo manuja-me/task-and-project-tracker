@@ -51,6 +51,7 @@ export const MyTasksPage: React.FC = () => {
             type="search"
             className="form-control"
             placeholder="Search my tasks..."
+            aria-label="Search my tasks"
             value={search}
             onChange={(e) => handleFilterChange("search", e.target.value)}
           />

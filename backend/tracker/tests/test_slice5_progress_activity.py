@@ -204,3 +204,23 @@ class Slice5ProgressFiltersActivityTest(TestCase):
 
         # Must not be N+1 (20 tasks shouldn't take 25+ queries, typically 3-5 queries)
         self.assertLessEqual(len(ctx.captured_queries), 6)
+
+    def test_query_count_bounded_for_project_list(self):
+        other_owner = User.objects.create_user(username="other_owner", password="password123")
+        for i in range(10):
+            p = Project.objects.create(
+                name=f"Proj {i}",
+                owner=self.owner if i % 2 == 0 else other_owner,
+            )
+            if i % 2 == 1:
+                ProjectMembership.objects.create(project=p, user=self.owner)
+            Task.objects.create(project=p, title=f"T {i}", status=TaskStatus.DONE)
+
+        self.client.force_authenticate(user=self.owner)
+        with CaptureQueriesContext(connection) as ctx:
+            resp = self.client.get("/api/v1/projects/")
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(len(resp.data["results"]), 11)
+
+        # Must stay bounded instead of 1+4N queries per project
+        self.assertLessEqual(len(ctx.captured_queries), 6)

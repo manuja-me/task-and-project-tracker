@@ -9,11 +9,16 @@ def api_fallback_404(request, *args, **kwargs):
     return JsonResponse({"code": "not_found", "message": "API endpoint not found."}, status=404)
 
 def spa_fallback(request, path=""):
-    dist_dir = settings.BASE_DIR.parent / "frontend" / "dist"
+    dist_dir = (settings.BASE_DIR.parent / "frontend" / "dist").resolve()
     if path:
         clean_path = path.lstrip("/")
-        candidate = dist_dir / clean_path
-        if candidate.exists() and candidate.is_file():
+        candidate = (dist_dir / clean_path).resolve()
+        if (
+            candidate.is_relative_to(dist_dir)
+            and candidate != dist_dir
+            and candidate.exists()
+            and candidate.is_file()
+        ):
             content_type, _ = mimetypes.guess_type(str(candidate))
             return FileResponse(open(candidate, "rb"), content_type=content_type or "application/octet-stream")
 

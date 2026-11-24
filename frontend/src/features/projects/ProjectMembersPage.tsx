@@ -12,6 +12,7 @@ export const ProjectMembersPage: React.FC = () => {
 
   const [usernameInput, setUsernameInput] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [removeConflict, setRemoveConflict] = useState<{
     message: string;
     count: number;
@@ -19,7 +20,12 @@ export const ProjectMembersPage: React.FC = () => {
   } | null>(null);
 
   // Fetch Project
-  const { data: project } = useQuery({
+  const {
+    data: project,
+    isLoading: isProjectLoading,
+    error: projectError,
+    refetch: refetchProject,
+  } = useQuery({
     queryKey: queryKeys.project(projectId!),
     queryFn: async () => {
       const resp = await apiClient<Project>(`/projects/${projectId}/`);
@@ -62,6 +68,10 @@ export const ProjectMembersPage: React.FC = () => {
     },
     onError: (err: any) => {
       if (err instanceof ApiError) {
+        if (err.status === 412) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId!) });
+        }
         setAddError(err.data.message || "Failed to add member.");
       } else {
         setAddError("Failed to add member.");
@@ -79,29 +89,47 @@ export const ProjectMembersPage: React.FC = () => {
     },
     onSuccess: () => {
       setRemoveConflict(null);
+      setRemoveError(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId!) });
       queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
     },
-    onError: (err: any) => {
+    onError: (err: any, userId: number) => {
       if (err instanceof ApiError && err.data.code === "member_has_assigned_tasks") {
+        setRemoveError(null);
+        const rawFilterUrl = err.data.filter_url;
+        const normalizedFilterUrl = rawFilterUrl
+          ? rawFilterUrl.replace(`/projects/${projectId}/tasks/`, `/projects/${projectId}`)
+          : `/projects/${projectId}?assignee=${userId}`;
         setRemoveConflict({
           message: err.data.message,
           count: err.data.assigned_task_count || 1,
-          filterUrl: err.data.filter_url || `/projects/${projectId}?assignee=assigned`,
+          filterUrl: normalizedFilterUrl,
         });
       } else if (err instanceof ApiError) {
-        alert(err.data.message || "Failed to remove member.");
+        setRemoveConflict(null);
+        if (err.status === 412) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.members(projectId!) });
+        }
+        setRemoveError(err.data.message || "Failed to remove member.");
+      } else {
+        setRemoveConflict(null);
+        setRemoveError("Failed to remove member.");
       }
     },
   });
 
-  if (isLoading) return <LoadingSpinner message="Loading team roster..." />;
+  if (isLoading || isProjectLoading) return <LoadingSpinner message="Loading team roster..." />;
 
-  if (error || !project) {
+  const combinedError = projectError || error;
+  if (combinedError || !project) {
     return (
       <ErrorAlert
-        message={(error as any)?.message || "Failed to load project roster."}
-        onRetry={() => refetch()}
+        message={(combinedError as any)?.message || "Failed to load project roster."}
+        onRetry={() => {
+          refetchProject();
+          refetch();
+        }}
       />
     );
   }
@@ -129,6 +157,12 @@ export const ProjectMembersPage: React.FC = () => {
           <Link to={`/projects/${project.id}/activity`}>Activity</Link>
         </div>
 
+        {removeError && (
+          <div className="alert alert-danger" role="alert">
+            {removeError}
+          </div>
+        )}
+
         {removeConflict && (
           <div className="alert alert-warning" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
             <div>
@@ -147,7 +181,7 @@ export const ProjectMembersPage: React.FC = () => {
             <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.5rem" }}>
               Add Team Member
             </h3>
-            {addError && <div className="alert alert-danger">{addError}</div>}
+            {addError && <div className="alert alert-danger" role="alert">{addError}</div>}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -160,6 +194,7 @@ export const ProjectMembersPage: React.FC = () => {
                 type="text"
                 className="form-control"
                 placeholder="Exact username (e.g. teammate)"
+                aria-label="Member username"
                 style={{ maxWidth: "300px" }}
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}

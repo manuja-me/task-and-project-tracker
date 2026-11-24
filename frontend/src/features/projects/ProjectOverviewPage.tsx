@@ -37,6 +37,7 @@ export const ProjectOverviewPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // Fetch project detail
   const {
@@ -137,16 +138,25 @@ export const ProjectOverviewPage: React.FC = () => {
       return resp.data;
     },
     onSuccess: (updated) => {
+      queryClient.setQueryData(queryKeys.project(projectId!), updated);
       queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       setIsEditModalOpen(false);
       setEditError(null);
+      setActionError(null);
     },
-    onError: (err: any) => {
-      if (err instanceof ApiError) {
-        setEditError(err.data.message || "Failed to update project.");
+    onError: (err: any, variables) => {
+      const msg =
+        err instanceof ApiError
+          ? err.data.message || "Failed to update project."
+          : "Failed to update project.";
+      if (err instanceof ApiError && err.status === 412) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
+      }
+      if (variables.archived !== undefined) {
+        setActionError(msg);
       } else {
-        setEditError("Failed to update project.");
+        setEditError(msg);
       }
     },
   });
@@ -165,6 +175,9 @@ export const ProjectOverviewPage: React.FC = () => {
     },
     onError: (err: any) => {
       if (err instanceof ApiError) {
+        if (err.status === 412) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId!) });
+        }
         setDeleteError(err.data.message || "Cannot delete project.");
       } else {
         setDeleteError("Failed to delete project.");
@@ -247,7 +260,10 @@ export const ProjectOverviewPage: React.FC = () => {
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => updateProjectMutation.mutate({ archived: true })}
+                    onClick={() => {
+                      setActionError(null);
+                      updateProjectMutation.mutate({ archived: true });
+                    }}
                     disabled={updateProjectMutation.isPending}
                   >
                     Archive
@@ -257,7 +273,10 @@ export const ProjectOverviewPage: React.FC = () => {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => updateProjectMutation.mutate({ archived: false })}
+                  onClick={() => {
+                    setActionError(null);
+                    updateProjectMutation.mutate({ archived: false });
+                  }}
                   disabled={updateProjectMutation.isPending}
                 >
                   Restore Project
@@ -280,6 +299,11 @@ export const ProjectOverviewPage: React.FC = () => {
         </div>
 
         {/* Progress Display */}
+        {actionError && (
+          <div className="alert alert-danger" role="alert" style={{ marginTop: "1rem", marginBottom: 0 }}>
+            {actionError}
+          </div>
+        )}
         <div style={{ marginTop: "1.25rem" }}>
           <ProgressBar progress={project.progress} />
         </div>
@@ -305,6 +329,7 @@ export const ProjectOverviewPage: React.FC = () => {
             type="search"
             className="form-control"
             placeholder="Search tasks..."
+            aria-label="Search tasks"
             value={search}
             onChange={(e) => handleFilterChange("search", e.target.value)}
           />
@@ -420,15 +445,22 @@ export const ProjectOverviewPage: React.FC = () => {
       {/* New Task Modal */}
       <Modal
         isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setTaskFormError(null);
+        }}
         title="Create New Task"
         titleId="create-task-title"
       >
-        {taskFormError && <div className="alert alert-danger">{taskFormError}</div>}
+        {taskFormError && <div className="alert alert-danger" role="alert">{taskFormError}</div>}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             setTaskFormError(null);
+            if (!taskTitle.trim()) {
+              setTaskFormError("Task title cannot be blank.");
+              return;
+            }
             createTaskMutation.mutate();
           }}
         >
@@ -516,15 +548,22 @@ export const ProjectOverviewPage: React.FC = () => {
       {/* Edit Project Modal */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditError(null);
+        }}
         title="Edit Project Settings"
         titleId="edit-project-title"
       >
-        {editError && <div className="alert alert-danger">{editError}</div>}
+        {editError && <div className="alert alert-danger" role="alert">{editError}</div>}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             setEditError(null);
+            if (!editName.trim()) {
+              setEditError("Project name cannot be blank.");
+              return;
+            }
             updateProjectMutation.mutate({ name: editName.trim(), description: editDesc.trim() });
           }}
         >
@@ -578,14 +617,17 @@ export const ProjectOverviewPage: React.FC = () => {
       {/* Delete Project Modal */}
       <Modal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setDeleteError(null);
+        }}
         title="Delete Project"
         titleId="delete-project-title"
       >
         <p style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
           Permanent deletion is only allowed if the project has <strong>never contained any task</strong>. Projects with historic tasks must be archived instead.
         </p>
-        {deleteError && <div className="alert alert-danger">{deleteError}</div>}
+        {deleteError && <div className="alert alert-danger" role="alert">{deleteError}</div>}
         <form
           onSubmit={(e) => {
             e.preventDefault();

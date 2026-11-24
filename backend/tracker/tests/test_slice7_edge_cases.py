@@ -1,7 +1,8 @@
 import uuid
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from rest_framework.test import APIClient
+from config.urls import spa_fallback
 from tracker.models import Project, ProjectMembership, Task, Tracker, TaskStatus, TrackerKind
 from tracker.services import delete_project
 
@@ -108,6 +109,16 @@ class EdgeCasesAcceptanceTest(TestCase):
         # Duplicate ID submission
         r2 = self.client.post("/api/v1/projects/", {"id": pid, "name": "Project Duplicate"}, format="json")
         self.assertEqual(r2.status_code, 409)
+        # Subsequent query in the same transaction must not fail with TransactionManagementError
+        self.assertTrue(Project.objects.filter(id=pid).exists())
+
+        # Duplicate Task ID submission also rolls back savepoint cleanly
+        tid = str(uuid.uuid4())
+        t1 = self.client.post(f"/api/v1/projects/{self.project.id}/tasks/", {"id": tid, "title": "T1"}, format="json")
+        self.assertEqual(t1.status_code, 201)
+        t2 = self.client.post(f"/api/v1/projects/{self.project.id}/tasks/", {"id": tid, "title": "T2"}, format="json")
+        self.assertEqual(t2.status_code, 409)
+        self.assertTrue(Task.objects.filter(id=tid).exists())
 
     def test_mismatched_project_task_pair_returns_404(self):
         # Create second project
@@ -174,3 +185,81 @@ class EdgeCasesAcceptanceTest(TestCase):
         # Malformed task UUID filter on activity
         r_task_uuid = self.client.get(f"/api/v1/projects/{self.project.id}/activity/?task_id=not-a-uuid")
         self.assertEqual(r_task_uuid.status_code, 400)
+
+    def test_spa_fallback_blocks_path_traversal(self):
+        rf = RequestFactory()
+        req = rf.get("/../../backend/config/settings.py")
+        resp = spa_fallback(req, path="../../backend/config/settings.py")
+        self.assertEqual(resp.status_code, 200)
+        body = b"".join(resp.streaming_content) if getattr(resp, "streaming", False) else resp.content
+        self.assertNotIn(b"SECRET_KEY", body)
+
+    def test_non_dict_json_payloads_return_400_not_500(self):
+        resp_session = self.client.get("/api/v1/session/")
+        csrf_token = resp_session.cookies["csrftoken"].value
+        r_login = self.client.post(
+            "/api/v1/session/login/",
+            data="[]",
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+        self.assertEqual(r_login.status_code, 400)
+
+        self.client.force_authenticate(user=self.owner)
+        r_proj = self.client.post("/api/v1/projects/", data="[]", content_type="application/json")
+        self.assertEqual(r_proj.status_code, 400)
+
+        r_proj_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/",
+            data="[]",
+            content_type="application/json",
+            HTTP_X_EXPECTED_VERSION="1",
+        )
+        self.assertEqual(r_proj_patch.status_code, 400)
+
+        t = Task.objects.create(project=self.project, title="Task", assignee=self.teammate, version=1)
+        r_task_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/tasks/{t.id}/",
+            data="[]",
+            content_type="application/json",
+            HTTP_X_EXPECTED_VERSION="1",
+        )
+        self.assertEqual(r_task_patch.status_code, 400)
+
+        self.client.force_authenticate(user=self.teammate)
+        r_member_task_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/tasks/{t.id}/",
+            data="[]",
+            content_type="application/json",
+            HTTP_X_EXPECTED_VERSION="1",
+        )
+        self.assertEqual(r_member_task_patch.status_code, 400)
+
+    def test_oversized_integer_user_ids_do_not_500(self):
+        self.client.force_authenticate(user=self.owner)
+        oversized = 999999999999999
+
+        r_create = self.client.post(
+            f"/api/v1/projects/{self.project.id}/tasks/",
+            {"title": "Overflow assignee", "assignee_id": oversized},
+            format="json",
+        )
+        self.assertEqual(r_create.status_code, 400)
+
+        t = Task.objects.create(project=self.project, title="Task", version=1)
+        r_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/tasks/{t.id}/",
+            {"assignee_id": oversized},
+            format="json",
+            HTTP_X_EXPECTED_VERSION="1",
+        )
+        self.assertEqual(r_patch.status_code, 400)
+
+        r_filter = self.client.get(f"/api/v1/projects/{self.project.id}/tasks/?assignee={oversized}")
+        self.assertEqual(r_filter.status_code, 400)
+
+        r_member = self.client.delete(
+            f"/api/v1/projects/{self.project.id}/members/{oversized}/",
+            HTTP_X_EXPECTED_VERSION="1",
+        )
+        self.assertEqual(r_member.status_code, 404)

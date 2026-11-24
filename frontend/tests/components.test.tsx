@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { StatusBadge } from "../src/components/StatusBadge";
 import { ProgressBar } from "../src/components/ProgressBar";
 import { ErrorAlert, EmptyState } from "../src/components/Feedback";
@@ -98,6 +98,91 @@ describe("Modal Component Accessibility", () => {
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("does not reset focus to first input when parent re-renders with a new onClose prop", () => {
+    vi.useFakeTimers();
+    try {
+      const firstOnClose = vi.fn();
+      const secondOnClose = vi.fn();
+
+      const TestFormModal = ({ onClose }: { onClose: () => void }) => {
+        const [desc, setDesc] = React.useState("");
+        return (
+          <Modal isOpen={true} onClose={onClose} title="Create Item">
+            <input aria-label="Title" type="text" />
+            <textarea
+              aria-label="Description"
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
+          </Modal>
+        );
+      };
+
+      const { rerender } = render(<TestFormModal onClose={firstOnClose} />);
+
+      const titleInput = screen.getByLabelText("Title");
+      const descInput = screen.getByLabelText("Description");
+
+      // Initial open focuses the first focusable input after 50ms
+      act(() => {
+        vi.advanceTimersByTime(60);
+      });
+      expect(document.activeElement).toBe(titleInput);
+
+      // User moves focus to Description and types, triggering parent re-render + new inline onClose
+      descInput.focus();
+      expect(document.activeElement).toBe(descInput);
+      fireEvent.change(descInput, { target: { value: "a" } });
+      rerender(<TestFormModal onClose={secondOnClose} />);
+
+      // Wait >50ms after re-render and verify focus remains on Description
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(document.activeElement).toBe(descInput);
+
+      // Escape still invokes the latest onClose callback
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(firstOnClose).not.toHaveBeenCalled();
+      expect(secondOnClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips disabled buttons in initial focus and Tab focus wrap", () => {
+    vi.useFakeTimers();
+    try {
+      const onClose = vi.fn();
+      render(
+        <Modal isOpen={true} onClose={onClose} title="Disabled Controls">
+          <button disabled>Disabled First</button>
+          <input aria-label="Enabled Input" type="text" />
+          <button>Enabled Submit</button>
+          <button disabled>Disabled Last</button>
+        </Modal>
+      );
+
+      const enabledInput = screen.getByLabelText("Enabled Input");
+      const enabledSubmit = screen.getByRole("button", { name: "Enabled Submit" });
+
+      act(() => {
+        vi.advanceTimersByTime(60);
+      });
+      expect(document.activeElement).toBe(enabledInput);
+
+      // Shift+Tab from first enabled control wraps to last enabled control
+      fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(enabledSubmit);
+
+      // Tab from last enabled control wraps to first enabled control
+      fireEvent.keyDown(document, { key: "Tab", shiftKey: false });
+      expect(document.activeElement).toBe(enabledInput);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Formatters", () => {
@@ -126,5 +211,9 @@ describe("Formatters", () => {
     expect(dt).toBeTruthy();
     // Verify it contains a timezone indicator string
     expect(dt.length).toBeGreaterThan(10);
+  });
+
+  it("returns input string for invalid dates instead of Invalid Date", () => {
+    expect(formatEventDateTime("not-a-date")).toBe("not-a-date");
   });
 });

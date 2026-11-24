@@ -55,6 +55,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/" element={<Navigate to="/projects" replace />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId" element={<ProjectOverviewPage />} />
+          <Route path="/projects/:projectId/tasks" element={<ProjectOverviewPage />} />
           <Route path="/projects/:projectId/tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="/projects/:projectId/members" element={<ProjectMembersPage />} />
           <Route path="/projects/:projectId/activity" element={<ProjectActivityPage />} />

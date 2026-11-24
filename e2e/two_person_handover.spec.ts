@@ -30,6 +30,7 @@ test.describe("Two-Person Handover Acceptance Journey", () => {
     await expect(ownerPage.locator(`text=${projName}`)).toBeVisible();
     await ownerPage.click(`text=${projName}`);
     await expect(ownerPage).toHaveURL(/.*\/projects\/[0-9a-f-]+/);
+    const projectUrl = ownerPage.url();
 
     // Add teammate in Members tab (scoped inside .card)
     await ownerPage.locator('.card a', { hasText: /^Members$/ }).click();
@@ -95,11 +96,21 @@ test.describe("Two-Person Handover Acceptance Journey", () => {
     await outsiderPage.click('button[type="submit"]');
 
     await expect(outsiderPage).toHaveURL(/.*\/projects/);
+    await expect(
+      outsiderPage.locator(".card h3").or(outsiderPage.getByRole("heading", { name: "No projects yet" })).first()
+    ).toBeVisible();
     await expect(outsiderPage.locator(`text=${projName}`)).not.toBeVisible();
 
     // Outsider checks My Tasks
     await outsiderPage.locator('.nav-links a', { hasText: /^My Tasks$/ }).click();
+    await expect(
+      outsiderPage.locator("table.table").or(outsiderPage.getByRole("heading", { name: "You have no assigned tasks" })).first()
+    ).toBeVisible();
     await expect(outsiderPage.locator(`text=${taskTitle}`)).not.toBeVisible();
+
+    // Direct URL access to owner's project returns 404 isolation error
+    await outsiderPage.goto(projectUrl);
+    await expect(outsiderPage.getByRole("alert")).toContainText(/Project not found/i);
 
     await ownerContext.close();
     await teammateContext.close();

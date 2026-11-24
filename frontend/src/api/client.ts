@@ -60,7 +60,8 @@ export async function apiClient<T>(
   });
 
   const resourceVersionHeader = response.headers.get("X-Resource-Version");
-  const resourceVersion = resourceVersionHeader ? parseInt(resourceVersionHeader, 10) : undefined;
+  const parsedVersion = resourceVersionHeader ? parseInt(resourceVersionHeader, 10) : NaN;
+  const resourceVersion = Number.isFinite(parsedVersion) ? parsedVersion : undefined;
 
   if (response.status === 204) {
     return { data: null as unknown as T, resourceVersion };
@@ -81,6 +82,13 @@ export async function apiClient<T>(
       code: "http_error",
       message: response.statusText || `HTTP ${response.status}`,
     };
+    if (
+      typeof window !== "undefined" &&
+      (response.status === 401 ||
+        (response.status === 403 && errorPayload.code === "not_authenticated"))
+    ) {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
     throw new ApiError(response.status, errorPayload, resourceVersion);
   }
 

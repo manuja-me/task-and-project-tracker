@@ -15,7 +15,12 @@ export const ProjectActivityPage: React.FC = () => {
   const taskId = searchParams.get("task") || "";
 
   // Fetch Project
-  const { data: project } = useQuery({
+  const {
+    data: project,
+    isLoading: isProjectLoading,
+    error: projectError,
+    refetch: refetchProject,
+  } = useQuery({
     queryKey: queryKeys.project(projectId!),
     queryFn: async () => {
       const resp = await apiClient<Project>(`/projects/${projectId}/`);
@@ -53,13 +58,17 @@ export const ProjectActivityPage: React.FC = () => {
     setSearchParams(next);
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading activity log..." />;
+  if (isLoading || isProjectLoading) return <LoadingSpinner message="Loading activity log..." />;
 
-  if (error || !project) {
+  const combinedError = projectError || error;
+  if (combinedError || !project) {
     return (
       <ErrorAlert
-        message={(error as any)?.message || "Failed to load project activity."}
-        onRetry={() => refetch()}
+        message={(combinedError as any)?.message || "Failed to load project activity."}
+        onRetry={() => {
+          refetchProject();
+          refetch();
+        }}
       />
     );
   }

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { queryKeys } from "../api/queryKeys";
@@ -15,6 +15,15 @@ const SessionContext = createContext<SessionContextType | null>(null);
 
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      queryClient.clear();
+      queryClient.setQueryData(queryKeys.session, null);
+    };
+    window.addEventListener("auth:expired", handleAuthExpired);
+    return () => window.removeEventListener("auth:expired", handleAuthExpired);
+  }, [queryClient]);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.session,

@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 import uuid
 from django.contrib.auth import authenticate, login, logout
 from django.utils.decorators import method_decorator
@@ -7,13 +8,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
-from tracker.models import Task
+from tracker.models import Task, ProjectMembership
 
 from tracker.selectors import (
     get_visible_projects,
     get_project_for_user,
     get_user_role,
     compute_project_progress_and_counts,
+    get_project_progress_map,
     get_project_roster,
     get_tasks_for_project,
     get_my_tasks,
@@ -103,7 +105,7 @@ class ProjectListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        qs = get_visible_projects(request.user)
+        qs = get_visible_projects(request.user).select_related("owner")
         search = request.query_params.get("search") or request.query_params.get("name")
         if search:
             qs = qs.filter(name__icontains=search.strip())
@@ -119,7 +121,26 @@ class ProjectListCreateView(APIView):
 
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
-        serializer = ProjectListSerializer(page, many=True, context={"request": request})
+        page_list = list(page) if page is not None else []
+        progress_map = get_project_progress_map(page_list)
+        member_project_ids = (
+            set(
+                ProjectMembership.objects.filter(
+                    project__in=page_list, user=request.user
+                ).values_list("project_id", flat=True)
+            )
+            if page_list
+            else set()
+        )
+        serializer = ProjectListSerializer(
+            page_list,
+            many=True,
+            context={
+                "request": request,
+                "progress_map": progress_map,
+                "member_project_ids": member_project_ids,
+            },
+        )
         resp = paginator.get_paginated_response(serializer.data)
         resp["Cache-Control"] = "private, no-store"
         return resp
@@ -339,9 +360,10 @@ class TaskDetailView(APIView):
         if not is_owner:
             if task.assignee_id != request.user.id:
                 raise PermissionDenied("You can only change the status of tasks assigned to you.")
-            raw_keys = set(request.data.keys())
-            if raw_keys - {"status"}:
-                raise PermissionDenied("Members can only update status.")
+            if isinstance(request.data, Mapping):
+                raw_keys = set(request.data.keys())
+                if raw_keys - {"status"}:
+                    raise PermissionDenied("Members can only update status.")
         expected_version = get_expected_version(request)
         serializer = TaskUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

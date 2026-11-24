@@ -24,7 +24,7 @@ export const Navbar: React.FC = () => {
       </div>
       {user ? (
         <>
-          <nav>
+          <nav aria-label="Main navigation">
             <ul className="nav-links">
               <li>
                 <NavLink to="/projects" end className={({ isActive }) => (isActive ? "active" : "")}>

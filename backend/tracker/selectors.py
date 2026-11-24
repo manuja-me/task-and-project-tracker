@@ -2,10 +2,13 @@ import zoneinfo
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Exists, OuterRef
 from django.contrib.auth.models import User
 from rest_framework.exceptions import ValidationError
 from tracker.models import Project, Task, ProjectMembership, Tracker, TaskStatus, TrackerKind
+
+PG_INT32_MIN = -2_147_483_648
+PG_INT32_MAX = 2_147_483_647
 
 def get_colombo_today():
     colombo_tz = zoneinfo.ZoneInfo("Asia/Colombo")
@@ -20,8 +23,9 @@ def get_visible_projects(user):
     if not user or not user.is_authenticated:
         return Project.objects.none()
     return Project.objects.filter(
-        Q(owner=user) | Q(memberships__user=user)
-    ).distinct()
+        Q(owner=user)
+        | Exists(ProjectMembership.objects.filter(project=OuterRef("pk"), user=user))
+    )
 
 def get_project_for_user(project_id, user):
     """Returns project if visible to user, else None."""
@@ -88,9 +92,11 @@ def get_tasks_for_project(project, *, search=None, status=None, assignee=None, o
         else:
             try:
                 assignee_id = int(assignee)
-                qs = qs.filter(assignee_id=assignee_id)
             except (ValueError, TypeError):
                 raise ValidationError({"assignee": ["Invalid assignee filter. Must be an integer ID or 'unassigned'."]})
+            if not (PG_INT32_MIN <= assignee_id <= PG_INT32_MAX):
+                raise ValidationError({"assignee": ["Invalid assignee filter. Must be an integer ID or 'unassigned'."]})
+            qs = qs.filter(assignee_id=assignee_id)
 
     if overdue is not None:
         colombo_today = get_colombo_today()
@@ -171,13 +177,7 @@ def get_my_tasks(user, *, search=None, status=None, overdue=None):
 
     return qs
 
-def compute_project_progress_and_counts(project):
-    """
-    Compute progress from active task rows as whole percent DONE / total, rounded half up.
-    Zero tasks gives 0% and 'No tasks yet'. Include unassigned tasks in the denominator.
-    """
-    active_tasks = project.tasks.filter(deleted_at__isnull=True)
-    total = active_tasks.count()
+def _format_progress_counts(total, todo, in_progress, done):
     if total == 0:
         return {
             "total_tasks": 0,
@@ -187,22 +187,57 @@ def compute_project_progress_and_counts(project):
             "percent_complete": 0,
             "progress_label": "No tasks yet",
         }
-    
+
+    ratio = (Decimal(done) * Decimal(100)) / Decimal(total)
+    percent = int(ratio.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    return {
+        "total_tasks": total,
+        "todo_count": todo,
+        "in_progress_count": in_progress,
+        "done_count": done,
+        "percent_complete": percent,
+        "progress_label": f"{percent}%",
+    }
+
+
+def get_project_progress_map(projects):
+    if not projects:
+        return {}
+    rows = (
+        Task.objects.filter(project__in=projects, deleted_at__isnull=True)
+        .values("project_id")
+        .annotate(
+            total=Count("id"),
+            todo=Count("id", filter=Q(status="TODO")),
+            in_progress=Count("id", filter=Q(status="IN_PROGRESS")),
+            done=Count("id", filter=Q(status="DONE")),
+        )
+    )
+    progress_map = {
+        row["project_id"]: _format_progress_counts(
+            row["total"], row["todo"], row["in_progress"], row["done"]
+        )
+        for row in rows
+    }
+    empty_progress = _format_progress_counts(0, 0, 0, 0)
+    for project in projects:
+        progress_map.setdefault(project.id, empty_progress)
+    return progress_map
+
+
+def compute_project_progress_and_counts(project):
+    """
+    Compute progress from active task rows as whole percent DONE / total, rounded half up.
+    Zero tasks gives 0% and 'No tasks yet'. Include unassigned tasks in the denominator.
+    """
+    active_tasks = project.tasks.filter(deleted_at__isnull=True)
     counts = active_tasks.aggregate(
+        total=Count("id"),
         todo=Count("id", filter=Q(status="TODO")),
         in_progress=Count("id", filter=Q(status="IN_PROGRESS")),
         done=Count("id", filter=Q(status="DONE")),
     )
-    done_count = counts["done"]
-    # Round half-up
-    ratio = (Decimal(done_count) * Decimal(100)) / Decimal(total)
-    percent = int(ratio.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-    
-    return {
-        "total_tasks": total,
-        "todo_count": counts["todo"],
-        "in_progress_count": counts["in_progress"],
-        "done_count": done_count,
-        "percent_complete": percent,
-        "progress_label": f"{percent}%",
-    }
+    return _format_progress_counts(
+        counts["total"], counts["todo"], counts["in_progress"], counts["done"]
+    )

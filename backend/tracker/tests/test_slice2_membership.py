@@ -103,6 +103,10 @@ class Slice2MembershipTest(TestCase):
         self.assertEqual(resp_remove_blocked.status_code, 409)
         self.assertEqual(resp_remove_blocked.data["code"], "member_has_assigned_tasks")
         self.assertEqual(resp_remove_blocked.data["assigned_task_count"], 1)
+        self.assertEqual(
+            resp_remove_blocked.data["filter_url"],
+            f"/projects/{self.project.id}?assignee={self.teammate.id}",
+        )
 
         # Reassign or delete task, then removal succeeds
         task = Task.objects.get(project=self.project)

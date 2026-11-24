@@ -1,16 +1,20 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useSession } from "../../app/session";
 import { ApiError } from "../../api/client";
 
 export const LoginPage: React.FC = () => {
-  const { login } = useSession();
+  const { user, login } = useSession();
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (user) {
+    return <Navigate to="/projects" replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +41,7 @@ export const LoginPage: React.FC = () => {
         <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1.25rem" }}>
           Sign In
         </h2>
-        {error && <div className="alert alert-danger">{error}</div>}
+        {error && <div className="alert alert-danger" role="alert">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label" htmlFor="username">

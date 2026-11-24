@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from tracker.models import Project, Task, ProjectMembership, Tracker, TaskStatus
@@ -7,13 +8,16 @@ from tracker.selectors import (
     is_task_overdue,
 )
 
-class StrictModelSerializer(serializers.ModelSerializer):
+class StrictFieldsMixin:
     def to_internal_value(self, data):
-        # Reject unknown fields
-        unknown = set(data.keys()) - set(self.fields.keys())
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
+        if isinstance(data, Mapping):
+            unknown = set(data.keys()) - set(self.fields.keys())
+            if unknown:
+                raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
         return super().to_internal_value(data)
+
+class StrictModelSerializer(StrictFieldsMixin, serializers.ModelSerializer):
+    pass
 
 class UserSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
@@ -43,15 +47,23 @@ class ProjectListSerializer(serializers.ModelSerializer):
     def get_role(self, obj):
         request = self.context.get("request")
         user = request.user if request else None
+        member_project_ids = self.context.get("member_project_ids")
+        if member_project_ids is not None and user and user.is_authenticated:
+            if obj.owner_id == user.id:
+                return "owner"
+            return "member" if obj.id in member_project_ids else None
         return get_user_role(obj, user)
 
     def get_progress(self, obj):
+        progress_map = self.context.get("progress_map")
+        if progress_map is not None:
+            return progress_map[obj.id]
         return compute_project_progress_and_counts(obj)
 
 class ProjectDetailSerializer(ProjectListSerializer):
     pass
 
-class ProjectCreateSerializer(serializers.Serializer):
+class ProjectCreateSerializer(StrictFieldsMixin, serializers.Serializer):
     id = serializers.UUIDField(required=False)
     name = serializers.CharField(max_length=120, trim_whitespace=True)
     description = serializers.CharField(max_length=2000, required=False, allow_blank=True, default="", trim_whitespace=True)
@@ -62,13 +74,7 @@ class ProjectCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Project name cannot be blank.")
         return val
 
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"id", "name", "description"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
-
-class ProjectUpdateSerializer(serializers.Serializer):
+class ProjectUpdateSerializer(StrictFieldsMixin, serializers.Serializer):
     name = serializers.CharField(max_length=120, required=False, trim_whitespace=True)
     description = serializers.CharField(max_length=2000, required=False, allow_blank=True, trim_whitespace=True)
     archived = serializers.BooleanField(required=False)
@@ -78,12 +84,6 @@ class ProjectUpdateSerializer(serializers.Serializer):
         if not val:
             raise serializers.ValidationError("Project name cannot be blank.")
         return val
-
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"name", "description", "archived"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
 
 class TaskProjectSummarySerializer(serializers.ModelSerializer):
     class Meta:
@@ -114,7 +114,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_is_overdue(self, obj):
         return is_task_overdue(obj)
 
-class TaskCreateSerializer(serializers.Serializer):
+class TaskCreateSerializer(StrictFieldsMixin, serializers.Serializer):
     id = serializers.UUIDField(required=False)
     title = serializers.CharField(max_length=160, trim_whitespace=True)
     description = serializers.CharField(max_length=4000, required=False, allow_blank=True, default="", trim_whitespace=True)
@@ -127,13 +127,7 @@ class TaskCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Task title cannot be blank.")
         return val
 
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"id", "title", "description", "assignee_id", "due_date"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
-
-class TaskUpdateSerializer(serializers.Serializer):
+class TaskUpdateSerializer(StrictFieldsMixin, serializers.Serializer):
     title = serializers.CharField(max_length=160, required=False, trim_whitespace=True)
     description = serializers.CharField(max_length=4000, required=False, allow_blank=True, trim_whitespace=True)
     assignee_id = serializers.IntegerField(required=False, allow_null=True)
@@ -145,12 +139,6 @@ class TaskUpdateSerializer(serializers.Serializer):
         if not val:
             raise serializers.ValidationError("Task title cannot be blank.")
         return val
-
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"title", "description", "assignee_id", "due_date", "status"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
 
 class TrackerSerializer(serializers.ModelSerializer):
     task_id = serializers.UUIDField(source="task.id", read_only=True)
@@ -188,21 +176,9 @@ class MemberItemSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
     joined_at = serializers.DateTimeField()
 
-class AddMemberSerializer(serializers.Serializer):
+class AddMemberSerializer(StrictFieldsMixin, serializers.Serializer):
     username = serializers.CharField(max_length=150, trim_whitespace=True)
 
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"username"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
-
-class LoginSerializer(serializers.Serializer):
+class LoginSerializer(StrictFieldsMixin, serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
-
-    def to_internal_value(self, data):
-        unknown = set(data.keys()) - {"username", "password"}
-        if unknown:
-            raise serializers.ValidationError({field: ["Unknown field."] for field in unknown})
-        return super().to_internal_value(data)
