@@ -34,7 +34,7 @@ export const StatusBadge: React.FC<Props> = ({ status, isOverdue }) => {
   };
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", flexWrap: "wrap" }}>
       <span className={getBadgeClass()} aria-label={`Status: ${getLabel()}`}>
         {getLabel()}
       </span>

@@ -151,7 +151,7 @@ export const ProjectMembersPage: React.FC = () => {
         </p>
 
         {/* Sub-navigation tabs */}
-        <div style={{ display: "flex", gap: "1rem", borderTop: "1px solid var(--border)", paddingTop: "0.75rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: "0.75rem", marginBottom: "1.5rem" }}>
           <Link to={`/projects/${project.id}`}>Tasks</Link>
           <Link to={`/projects/${project.id}/members`} style={{ fontWeight: 600 }}>Members</Link>
           <Link to={`/projects/${project.id}/activity`}>Activity</Link>
@@ -212,7 +212,8 @@ export const ProjectMembersPage: React.FC = () => {
         )}
 
         {/* Roster Table */}
-        <table className="table">
+        <div className="table-responsive">
+          <table className="table">
           <thead>
             <tr>
               <th>Username</th>
@@ -265,7 +266,8 @@ export const ProjectMembersPage: React.FC = () => {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   );

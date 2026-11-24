@@ -18,3 +18,6 @@ dist/
 coverage/
 playwright-report/
 test-results/
+
+# Internal AI handoff
+ANTIGRAVITY_HANDOFF.md

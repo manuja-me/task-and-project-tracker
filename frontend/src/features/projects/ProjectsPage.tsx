@@ -106,7 +106,7 @@ export const ProjectsPage: React.FC = () => {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <button
             type="button"
             className={`btn ${!archived ? "btn-primary" : "btn-secondary"}`}
@@ -168,9 +168,9 @@ export const ProjectsPage: React.FC = () => {
       )}
 
       {data && data.results.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: "1rem" }}>
           {data.results.map((project) => (
-            <div key={project.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div key={project.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
                   <h3 style={{ fontSize: "1.125rem", fontWeight: 600 }}>

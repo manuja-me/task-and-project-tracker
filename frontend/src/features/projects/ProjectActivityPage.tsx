@@ -88,7 +88,7 @@ export const ProjectActivityPage: React.FC = () => {
         </p>
 
         {/* Sub-navigation tabs */}
-        <div style={{ display: "flex", gap: "1rem", borderTop: "1px solid var(--border)", paddingTop: "0.75rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: "0.75rem", marginBottom: "1.5rem" }}>
           <Link to={`/projects/${project.id}`}>Tasks</Link>
           <Link to={`/projects/${project.id}/members`}>Members</Link>
           <Link to={`/projects/${project.id}/activity`} style={{ fontWeight: 600 }}>Activity</Link>
@@ -136,7 +136,7 @@ export const ProjectActivityPage: React.FC = () => {
                   position: "relative",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.25rem 1rem" }}>
                   <div>
                     <span style={{ fontWeight: 600 }}>{event.actor.username}</span>{" "}
                     <span style={{ color: "var(--text-muted)" }}>

@@ -36,7 +36,11 @@ export const ErrorAlert: React.FC<{
   message: string;
   onRetry?: () => void;
 }> = ({ message, onRetry }) => (
-  <div className="alert alert-danger" role="alert" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  <div
+    className="alert alert-danger"
+    role="alert"
+    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}
+  >
     <span>{message}</span>
     {onRetry && (
       <button type="button" className="btn btn-secondary" onClick={onRetry} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>

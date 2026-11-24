@@ -309,7 +309,7 @@ export const ProjectOverviewPage: React.FC = () => {
         </div>
 
         {/* Sub-navigation tabs */}
-        <div style={{ display: "flex", gap: "1rem", borderTop: "1px solid var(--border)", marginTop: "1rem", paddingTop: "0.75rem" }}>
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", borderTop: "1px solid var(--border)", marginTop: "1rem", paddingTop: "0.75rem" }}>
           <Link to={`/projects/${project.id}`} style={{ fontWeight: 600 }}>
             Tasks
           </Link>
@@ -399,7 +399,8 @@ export const ProjectOverviewPage: React.FC = () => {
 
       {tasksData && tasksData.results.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <table className="table">
+          <div className="table-responsive">
+            <table className="table">
             <thead>
               <tr>
                 <th>Title</th>
@@ -438,7 +439,8 @@ export const ProjectOverviewPage: React.FC = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
 

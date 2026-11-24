@@ -483,7 +483,7 @@ export const TaskDetailPage: React.FC = () => {
                   position: "relative",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", flexWrap: "wrap", gap: "0.25rem 1rem" }}>
                   <span>
                     <strong>{event.actor.username}</strong> ({event.kind}) · Version {event.task_version}
                   </span>

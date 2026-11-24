@@ -103,7 +103,8 @@ export const MyTasksPage: React.FC = () => {
 
       {data && data.results.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          <table className="table">
+          <div className="table-responsive">
+            <table className="table">
             <thead>
               <tr>
                 <th>Task Title</th>
@@ -142,7 +143,8 @@ export const MyTasksPage: React.FC = () => {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
     </div>
