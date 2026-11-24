@@ -7,6 +7,7 @@ import { Task, Project, Member, TrackerEvent, PaginatedResponse, TaskStatus } fr
 import { useSession } from "../../app/session";
 import { StatusBadge } from "../../components/StatusBadge";
 import { LoadingSpinner, EmptyState, ErrorAlert } from "../../components/Feedback";
+import { formatChangeText, formatEventDateTime } from "../../utils/formatters";
 
 export const TaskDetailPage: React.FC = () => {
   const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
@@ -213,7 +214,7 @@ export const TaskDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {isOwner && (
+          {isOwner && !project.archived && (
             <button
               type="button"
               className="btn btn-secondary"
@@ -230,6 +231,12 @@ export const TaskDetailPage: React.FC = () => {
           )}
         </div>
 
+        {project.archived && (
+          <div className="alert alert-warning" style={{ marginTop: "1rem" }}>
+            This project is archived. All task details and statuses are read-only.
+          </div>
+        )}
+
         {formError && <div className="alert alert-danger" style={{ marginTop: "1rem" }}>{formError}</div>}
 
         {/* 412 Stale Conflict Banner */}
@@ -241,7 +248,9 @@ export const TaskDetailPage: React.FC = () => {
               <li>Status: <strong>{staleConflict.status}</strong></li>
               <li>Assignee: <em>{staleConflict.assignee?.username || "Unassigned"}</em></li>
             </ul>
-            Click <strong>Save Changes</strong> to override with your draft, or{" "}
+            {isOwner && !project.archived
+              ? "Click Save Changes to override with your draft, or "
+              : "Review the updated values, or "}
             <button
               type="button"
               className="btn btn-secondary"
@@ -259,7 +268,7 @@ export const TaskDetailPage: React.FC = () => {
         )}
 
         {/* OWNER EDIT FORM */}
-        {isOwner ? (
+        {isOwner && !project.archived ? (
           <form onSubmit={handleOwnerSave} style={{ marginTop: "1.5rem" }}>
             <div className="form-group">
               <label className="form-label" htmlFor="edit-task-title">
@@ -332,7 +341,7 @@ export const TaskDetailPage: React.FC = () => {
                   <option value="">Unassigned</option>
                   {roster?.map((m) => (
                     <option key={m.id} value={m.id.toString()}>
-                      {m.username} ({m.role})
+                      {m.username} ({m.role}){m.is_active ? "" : " (Inactive)"}
                     </option>
                   ))}
                 </select>
@@ -366,7 +375,7 @@ export const TaskDetailPage: React.FC = () => {
             </div>
           </form>
         ) : (
-          /* MEMBER VIEW: Read-only metadata + Assigned Status Controls */
+          /* READ-ONLY / MEMBER VIEW: Metadata + Assigned Status Controls */
           <div style={{ marginTop: "1.5rem" }}>
             <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>
               {task.description || "No description provided."}
@@ -374,7 +383,13 @@ export const TaskDetailPage: React.FC = () => {
             <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
               <div>
                 <span style={{ color: "var(--text-muted)" }}>Assignee: </span>
-                <strong>{task.assignee ? task.assignee.username : "Unassigned"}</strong>
+                <strong>
+                  {task.assignee
+                    ? task.assignee.is_active
+                      ? task.assignee.username
+                      : `${task.assignee.username} (Inactive)`
+                    : "Unassigned"}
+                </strong>
               </div>
               <div>
                 <span style={{ color: "var(--text-muted)" }}>Due Date: </span>
@@ -382,8 +397,8 @@ export const TaskDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* If assigned to this member, display permitted status controls */}
-            {isAssignee && (
+            {/* If assigned to this member and project not archived, display permitted status controls */}
+            {isAssignee && !project.archived && (
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
                 <h3 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "0.75rem" }}>
                   Update Status
@@ -433,14 +448,13 @@ export const TaskDetailPage: React.FC = () => {
                     <strong>{event.actor.username}</strong> ({event.kind}) · Version {event.task_version}
                   </span>
                   <span style={{ color: "var(--text-muted)" }}>
-                    {new Date(event.event_at).toLocaleString()}
+                    {formatEventDateTime(event.event_at)}
                   </span>
                 </div>
                 <div style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
                   {Object.entries(event.changes).map(([field, delta]: [string, any]) => (
                     <div key={field}>
-                      • Changed <strong>{field}</strong>:{" "}
-                      <code>{JSON.stringify(delta.old)}</code> → <code>{JSON.stringify(delta.new)}</code>
+                      • {formatChangeText(field, delta)}
                     </div>
                   ))}
                 </div>

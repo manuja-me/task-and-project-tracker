@@ -6,7 +6,8 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.exceptions import ValidationError, NotFound
+from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
+from tracker.models import Task
 
 from tracker.selectors import (
     get_visible_projects,
@@ -113,6 +114,8 @@ class ProjectListCreateView(APIView):
                 qs = qs.filter(archived=True)
             elif archived.lower() in ("false", "0"):
                 qs = qs.filter(archived=False)
+            else:
+                raise ValidationError({"archived": ["Invalid archived filter. Must be 'true' or 'false'."]})
 
         paginator = StandardPagination()
         page = paginator.paginate_queryset(qs, request, view=self)
@@ -149,6 +152,11 @@ class ProjectDetailView(APIView):
         return resp
 
     def patch(self, request, project_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can edit project settings.")
         expected_version = get_expected_version(request)
         serializer = ProjectUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -164,6 +172,11 @@ class ProjectDetailView(APIView):
         return resp
 
     def delete(self, request, project_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can delete this project.")
         expected_version = get_expected_version(request)
         delete_project(
             project_id=project_id,
@@ -187,6 +200,11 @@ class ProjectMembersView(APIView):
         return resp
 
     def post(self, request, project_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can add members.")
         expected_version = get_expected_version(request)
         serializer = AddMemberSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -211,6 +229,11 @@ class ProjectMemberDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, project_id, user_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can remove members.")
         expected_version = get_expected_version(request)
         project = remove_project_member(
             project_id=project_id,
@@ -250,6 +273,11 @@ class TaskListCreateView(APIView):
         return resp
 
     def post(self, request, project_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can create tasks.")
         serializer = TaskCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         task = create_task(
@@ -301,6 +329,19 @@ class TaskDetailView(APIView):
         return resp
 
     def patch(self, request, project_id, task_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        task = Task.objects.filter(id=task_id, project=project, deleted_at__isnull=True).first()
+        if not task:
+            raise NotFound("Task not found.")
+        is_owner = (project.owner_id == request.user.id)
+        if not is_owner:
+            if task.assignee_id != request.user.id:
+                raise PermissionDenied("You can only change the status of tasks assigned to you.")
+            raw_keys = set(request.data.keys())
+            if raw_keys - {"status"}:
+                raise PermissionDenied("Members can only update status.")
         expected_version = get_expected_version(request)
         serializer = TaskUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -318,6 +359,14 @@ class TaskDetailView(APIView):
         return resp
 
     def delete(self, request, project_id, task_id):
+        project = get_project_for_user(project_id, request.user)
+        if not project:
+            raise NotFound("Project not found.")
+        task = Task.objects.filter(id=task_id, project=project, deleted_at__isnull=True).first()
+        if not task:
+            raise NotFound("Task not found.")
+        if project.owner_id != request.user.id:
+            raise PermissionDenied("Only the project owner can delete tasks.")
         expected_version = get_expected_version(request)
         delete_task(
             project_id=project_id,

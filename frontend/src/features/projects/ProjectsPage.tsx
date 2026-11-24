@@ -6,6 +6,7 @@ import { queryKeys } from "../../api/queryKeys";
 import { Project, PaginatedResponse } from "../../api/types";
 import { ProgressBar } from "../../components/ProgressBar";
 import { LoadingSpinner, EmptyState, ErrorAlert } from "../../components/Feedback";
+import { Modal } from "../../components/Modal";
 
 export const ProjectsPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -15,6 +16,7 @@ export const ProjectsPage: React.FC = () => {
   const archived = searchParams.get("archived") === "true";
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formUuid, setFormUuid] = useState<string>(() => crypto.randomUUID());
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -36,18 +38,20 @@ export const ProjectsPage: React.FC = () => {
       const resp = await apiClient<Project>("/projects/", {
         method: "POST",
         body: JSON.stringify({
+          id: formUuid,
           name: newProjectName.trim(),
           description: newProjectDesc.trim(),
         }),
       });
       return resp.data;
     },
-    onSuccess: (newProj) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       setIsModalOpen(false);
       setNewProjectName("");
       setNewProjectDesc("");
       setFormError(null);
+      setFormUuid(crypto.randomUUID());
     },
     onError: (err: any) => {
       if (err instanceof ApiError) {
@@ -196,66 +200,66 @@ export const ProjectsPage: React.FC = () => {
       )}
 
       {/* Create Project Modal */}
-      {isModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" role="dialog" aria-labelledby="create-project-title">
-            <h2 id="create-project-title" style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-              Create New Project
-            </h2>
-            {formError && <div className="alert alert-danger">{formError}</div>}
-            <form onSubmit={handleCreateSubmit}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="new-project-name">
-                  Project Name <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <input
-                  id="new-project-name"
-                  type="text"
-                  className="form-control"
-                  maxLength={120}
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="new-project-desc">
-                  Description
-                </label>
-                <textarea
-                  id="new-project-desc"
-                  className="form-control"
-                  rows={3}
-                  maxLength={2000}
-                  value={newProjectDesc}
-                  onChange={(e) => setNewProjectDesc(e.target.value)}
-                />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    setFormError(null);
-                  }}
-                  disabled={createMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={createMutation.isPending}
-                >
-                  {createMutation.isPending ? "Creating..." : "Create Project"}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setFormError(null);
+        }}
+        title="Create New Project"
+        titleId="create-project-title"
+      >
+        {formError && <div className="alert alert-danger">{formError}</div>}
+        <form onSubmit={handleCreateSubmit}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="new-project-name">
+              Project Name <span style={{ color: "var(--danger)" }}>*</span>
+            </label>
+            <input
+              id="new-project-name"
+              type="text"
+              className="form-control"
+              maxLength={120}
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              required
+            />
           </div>
-        </div>
-      )}
+          <div className="form-group">
+            <label className="form-label" htmlFor="new-project-desc">
+              Description
+            </label>
+            <textarea
+              id="new-project-desc"
+              className="form-control"
+              rows={3}
+              maxLength={2000}
+              value={newProjectDesc}
+              onChange={(e) => setNewProjectDesc(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setIsModalOpen(false);
+                setFormError(null);
+              }}
+              disabled={createMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={createMutation.isPending}
+            >
+              {createMutation.isPending ? "Creating..." : "Create Project"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

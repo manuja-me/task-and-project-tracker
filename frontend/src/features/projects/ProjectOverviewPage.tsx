@@ -7,6 +7,7 @@ import { Project, Task, Member, PaginatedResponse } from "../../api/types";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusBadge } from "../../components/StatusBadge";
 import { LoadingSpinner, EmptyState, ErrorAlert } from "../../components/Feedback";
+import { Modal } from "../../components/Modal";
 
 export const ProjectOverviewPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -21,6 +22,7 @@ export const ProjectOverviewPage: React.FC = () => {
 
   // Modals state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskUuid, setTaskUuid] = useState<string>(() => crypto.randomUUID());
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskAssigneeId, setTaskAssigneeId] = useState<string>("");
@@ -90,6 +92,7 @@ export const ProjectOverviewPage: React.FC = () => {
   const createTaskMutation = useMutation({
     mutationFn: async () => {
       const payload: any = {
+        id: taskUuid,
         title: taskTitle.trim(),
         description: taskDesc.trim(),
       };
@@ -112,6 +115,7 @@ export const ProjectOverviewPage: React.FC = () => {
       setTaskAssigneeId("");
       setTaskDueDate("");
       setTaskFormError(null);
+      setTaskUuid(crypto.randomUUID());
     },
     onError: (err: any) => {
       if (err instanceof ApiError) {
@@ -392,7 +396,11 @@ export const ProjectOverviewPage: React.FC = () => {
                     <StatusBadge status={t.status} isOverdue={t.is_overdue} />
                   </td>
                   <td style={{ color: t.assignee ? "inherit" : "var(--text-muted)" }}>
-                    {t.assignee ? t.assignee.username : "Unassigned"}
+                    {t.assignee
+                      ? t.assignee.is_active
+                        ? t.assignee.username
+                        : `${t.assignee.username} (Inactive)`
+                      : "Unassigned"}
                   </td>
                   <td>
                     {t.due_date ? t.due_date : <span style={{ color: "var(--text-muted)" }}>No date</span>}
@@ -410,224 +418,217 @@ export const ProjectOverviewPage: React.FC = () => {
       )}
 
       {/* New Task Modal */}
-      {isTaskModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" role="dialog" aria-labelledby="create-task-title">
-            <h2 id="create-task-title" style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-              Create New Task
-            </h2>
-            {taskFormError && <div className="alert alert-danger">{taskFormError}</div>}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setTaskFormError(null);
-                createTaskMutation.mutate();
-              }}
-            >
-              <div className="form-group">
-                <label className="form-label" htmlFor="task-title">
-                  Title <span style={{ color: "var(--danger)" }}>*</span>
-                </label>
-                <input
-                  id="task-title"
-                  type="text"
-                  className="form-control"
-                  maxLength={160}
-                  value={taskTitle}
-                  onChange={(e) => setTaskTitle(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="task-desc">
-                  Description
-                </label>
-                <textarea
-                  id="task-desc"
-                  className="form-control"
-                  rows={3}
-                  maxLength={4000}
-                  value={taskDesc}
-                  onChange={(e) => setTaskDesc(e.target.value)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="task-assignee">
-                  Assignee
-                </label>
-                <select
-                  id="task-assignee"
-                  className="form-control"
-                  value={taskAssigneeId}
-                  onChange={(e) => setTaskAssigneeId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {roster?.map((m) => (
-                    <option key={m.id} value={m.id.toString()}>
-                      {m.username} ({m.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="task-due-date">
-                  Due Date
-                </label>
-                <input
-                  id="task-due-date"
-                  type="date"
-                  className="form-control"
-                  value={taskDueDate}
-                  onChange={(e) => setTaskDueDate(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsTaskModalOpen(false)}
-                  disabled={createTaskMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={createTaskMutation.isPending}
-                >
-                  {createTaskMutation.isPending ? "Creating..." : "Create Task"}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isTaskModalOpen}
+        onClose={() => setIsTaskModalOpen(false)}
+        title="Create New Task"
+        titleId="create-task-title"
+      >
+        {taskFormError && <div className="alert alert-danger">{taskFormError}</div>}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setTaskFormError(null);
+            createTaskMutation.mutate();
+          }}
+        >
+          <div className="form-group">
+            <label className="form-label" htmlFor="task-title">
+              Title <span style={{ color: "var(--danger)" }}>*</span>
+            </label>
+            <input
+              id="task-title"
+              type="text"
+              className="form-control"
+              maxLength={160}
+              value={taskTitle}
+              onChange={(e) => setTaskTitle(e.target.value)}
+              required
+            />
           </div>
-        </div>
-      )}
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="task-desc">
+              Description
+            </label>
+            <textarea
+              id="task-desc"
+              className="form-control"
+              rows={3}
+              maxLength={4000}
+              value={taskDesc}
+              onChange={(e) => setTaskDesc(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="task-assignee">
+              Assignee
+            </label>
+            <select
+              id="task-assignee"
+              className="form-control"
+              value={taskAssigneeId}
+              onChange={(e) => setTaskAssigneeId(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {roster?.map((m) => (
+                <option key={m.id} value={m.id.toString()}>
+                  {m.username} ({m.role}){m.is_active ? "" : " (Inactive)"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="task-due-date">
+              Due Date
+            </label>
+            <input
+              id="task-due-date"
+              type="date"
+              className="form-control"
+              value={taskDueDate}
+              onChange={(e) => setTaskDueDate(e.target.value)}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsTaskModalOpen(false)}
+              disabled={createTaskMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={createTaskMutation.isPending}
+            >
+              {createTaskMutation.isPending ? "Creating..." : "Create Task"}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Edit Project Modal */}
-      {isEditModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" role="dialog" aria-labelledby="edit-project-title">
-            <h2 id="edit-project-title" style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>
-              Edit Project Settings
-            </h2>
-            {editError && <div className="alert alert-danger">{editError}</div>}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setEditError(null);
-                updateProjectMutation.mutate({ name: editName.trim(), description: editDesc.trim() });
-              }}
-            >
-              <div className="form-group">
-                <label className="form-label" htmlFor="edit-proj-name">
-                  Project Name
-                </label>
-                <input
-                  id="edit-proj-name"
-                  type="text"
-                  className="form-control"
-                  maxLength={120}
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="edit-proj-desc">
-                  Description
-                </label>
-                <textarea
-                  id="edit-proj-desc"
-                  className="form-control"
-                  rows={3}
-                  maxLength={2000}
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsEditModalOpen(false)}
-                  disabled={updateProjectMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={updateProjectMutation.isPending}
-                >
-                  {updateProjectMutation.isPending ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Project Settings"
+        titleId="edit-project-title"
+      >
+        {editError && <div className="alert alert-danger">{editError}</div>}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setEditError(null);
+            updateProjectMutation.mutate({ name: editName.trim(), description: editDesc.trim() });
+          }}
+        >
+          <div className="form-group">
+            <label className="form-label" htmlFor="edit-proj-name">
+              Project Name
+            </label>
+            <input
+              id="edit-proj-name"
+              type="text"
+              className="form-control"
+              maxLength={120}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              required
+            />
           </div>
-        </div>
-      )}
+          <div className="form-group">
+            <label className="form-label" htmlFor="edit-proj-desc">
+              Description
+            </label>
+            <textarea
+              id="edit-proj-desc"
+              className="form-control"
+              rows={3}
+              maxLength={2000}
+              value={editDesc}
+              onChange={(e) => setEditDesc(e.target.value)}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsEditModalOpen(false)}
+              disabled={updateProjectMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={updateProjectMutation.isPending}
+            >
+              {updateProjectMutation.isPending ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Delete Project Modal */}
-      {isDeleteModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-content" role="dialog" aria-labelledby="delete-project-title">
-            <h2 id="delete-project-title" style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem", color: "var(--danger)" }}>
-              Delete Project
-            </h2>
-            <p style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-              Permanent deletion is only allowed if the project has <strong>never contained any task</strong>. Projects with historic tasks must be archived instead.
-            </p>
-            {deleteError && <div className="alert alert-danger">{deleteError}</div>}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setDeleteError(null);
-                if (deleteConfirmName !== project.name) {
-                  setDeleteError("Confirmation name does not match project name.");
-                  return;
-                }
-                deleteProjectMutation.mutate();
-              }}
-            >
-              <div className="form-group">
-                <label className="form-label" htmlFor="confirm-del-name">
-                  Type <strong>{project.name}</strong> to confirm:
-                </label>
-                <input
-                  id="confirm-del-name"
-                  type="text"
-                  className="form-control"
-                  value={deleteConfirmName}
-                  onChange={(e) => setDeleteConfirmName(e.target.value)}
-                  required
-                />
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsDeleteModalOpen(false)}
-                  disabled={deleteProjectMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-danger"
-                  disabled={deleteProjectMutation.isPending || deleteConfirmName !== project.name}
-                >
-                  {deleteProjectMutation.isPending ? "Deleting..." : "Permanently Delete"}
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Project"
+        titleId="delete-project-title"
+      >
+        <p style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
+          Permanent deletion is only allowed if the project has <strong>never contained any task</strong>. Projects with historic tasks must be archived instead.
+        </p>
+        {deleteError && <div className="alert alert-danger">{deleteError}</div>}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setDeleteError(null);
+            if (deleteConfirmName !== project.name) {
+              setDeleteError("Confirmation name does not match project name.");
+              return;
+            }
+            deleteProjectMutation.mutate();
+          }}
+        >
+          <div className="form-group">
+            <label className="form-label" htmlFor="confirm-del-name">
+              Type <strong>{project.name}</strong> to confirm:
+            </label>
+            <input
+              id="confirm-del-name"
+              type="text"
+              className="form-control"
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              required
+            />
           </div>
-        </div>
-      )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1.5rem" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsDeleteModalOpen(false)}
+              disabled={deleteProjectMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-danger"
+              disabled={deleteProjectMutation.isPending || deleteConfirmName !== project.name}
+            >
+              {deleteProjectMutation.isPending ? "Deleting..." : "Permanently Delete"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

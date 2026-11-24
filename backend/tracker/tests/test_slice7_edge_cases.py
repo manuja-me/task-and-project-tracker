@@ -118,3 +118,59 @@ class EdgeCasesAcceptanceTest(TestCase):
         # Requesting t1 under project2 must return 404
         resp = self.client.get(f"/api/v1/projects/{project2.id}/tasks/{t1.id}/")
         self.assertEqual(resp.status_code, 404)
+
+    def test_outsider_and_member_visibility_before_preconditions(self):
+        # 1. Outsider PATCH on project without X-Expected-Version returns 404 (not 428)
+        self.client.force_authenticate(user=self.outsider)
+        r_out_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/",
+            {"name": "Attempt rename"},
+            format="json",
+        )
+        self.assertEqual(r_out_patch.status_code, 404)
+
+        # 2. Member PATCH on project without X-Expected-Version returns 403 (not 428)
+        self.client.force_authenticate(user=self.teammate)
+        r_mem_patch = self.client.patch(
+            f"/api/v1/projects/{self.project.id}/",
+            {"name": "Attempt rename"},
+            format="json",
+        )
+        self.assertEqual(r_mem_patch.status_code, 403)
+
+        # 3. Outsider POST task with invalid body returns 404 (not 400)
+        self.client.force_authenticate(user=self.outsider)
+        r_out_post_task = self.client.post(
+            f"/api/v1/projects/{self.project.id}/tasks/",
+            {},
+            format="json",
+        )
+        self.assertEqual(r_out_post_task.status_code, 404)
+
+    def test_malformed_query_filters_rejected_with_400(self):
+        self.client.force_authenticate(user=self.owner)
+
+        # Malformed status filter
+        r_status = self.client.get(f"/api/v1/projects/{self.project.id}/tasks/?status=INVALID_STATUS")
+        self.assertEqual(r_status.status_code, 400)
+        self.assertEqual(r_status.data["code"], "invalid_field")
+
+        # Malformed assignee filter
+        r_assignee = self.client.get(f"/api/v1/projects/{self.project.id}/tasks/?assignee=notanumber")
+        self.assertEqual(r_assignee.status_code, 400)
+
+        # Malformed overdue filter
+        r_overdue = self.client.get(f"/api/v1/projects/{self.project.id}/tasks/?overdue=maybe")
+        self.assertEqual(r_overdue.status_code, 400)
+
+        # Malformed archived filter on projects
+        r_arch = self.client.get("/api/v1/projects/?archived=unknown")
+        self.assertEqual(r_arch.status_code, 400)
+
+        # Malformed kind filter on activity
+        r_kind = self.client.get(f"/api/v1/projects/{self.project.id}/activity/?kind=NONEXISTENT")
+        self.assertEqual(r_kind.status_code, 400)
+
+        # Malformed task UUID filter on activity
+        r_task_uuid = self.client.get(f"/api/v1/projects/{self.project.id}/activity/?task_id=not-a-uuid")
+        self.assertEqual(r_task_uuid.status_code, 400)

@@ -5,6 +5,7 @@ import { apiClient } from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 import { Project, TrackerEvent, PaginatedResponse } from "../../api/types";
 import { LoadingSpinner, EmptyState, ErrorAlert } from "../../components/Feedback";
+import { formatChangeText, formatEventDateTime } from "../../utils/formatters";
 
 export const ProjectActivityPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -151,7 +152,7 @@ export const ProjectActivityPage: React.FC = () => {
                     </span>
                   </div>
                   <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                    {new Date(event.event_at).toLocaleString()}
+                    {formatEventDateTime(event.event_at)}
                   </span>
                 </div>
 
@@ -159,8 +160,7 @@ export const ProjectActivityPage: React.FC = () => {
                 <div style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
                   {Object.entries(event.changes).map(([field, delta]: [string, any]) => (
                     <div key={field}>
-                      • <strong>{field}</strong>:{" "}
-                      <code>{JSON.stringify(delta.old)}</code> → <code>{JSON.stringify(delta.new)}</code>
+                      • {formatChangeText(field, delta)}
                     </div>
                   ))}
                 </div>

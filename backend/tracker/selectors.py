@@ -1,9 +1,11 @@
 import zoneinfo
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
 from django.db.models import Q, Count
 from django.contrib.auth.models import User
-from tracker.models import Project, Task, ProjectMembership, Tracker
+from rest_framework.exceptions import ValidationError
+from tracker.models import Project, Task, ProjectMembership, Tracker, TaskStatus, TrackerKind
 
 def get_colombo_today():
     colombo_tz = zoneinfo.ZoneInfo("Asia/Colombo")
@@ -76,6 +78,8 @@ def get_tasks_for_project(project, *, search=None, status=None, assignee=None, o
         qs = qs.filter(title__icontains=search.strip())
 
     if status:
+        if status not in TaskStatus.values:
+            raise ValidationError({"status": [f"Invalid status filter value '{status}'."]})
         qs = qs.filter(status=status)
 
     if assignee is not None:
@@ -86,7 +90,7 @@ def get_tasks_for_project(project, *, search=None, status=None, assignee=None, o
                 assignee_id = int(assignee)
                 qs = qs.filter(assignee_id=assignee_id)
             except (ValueError, TypeError):
-                pass
+                raise ValidationError({"assignee": ["Invalid assignee filter. Must be an integer ID or 'unassigned'."]})
 
     if overdue is not None:
         colombo_today = get_colombo_today()
@@ -94,6 +98,8 @@ def get_tasks_for_project(project, *, search=None, status=None, assignee=None, o
             qs = qs.exclude(status="DONE").filter(due_date__lt=colombo_today)
         elif overdue in (False, "false", "0"):
             qs = qs.filter(Q(status="DONE") | Q(due_date__isnull=True) | Q(due_date__gte=colombo_today))
+        else:
+            raise ValidationError({"overdue": ["Invalid overdue filter. Must be 'true' or 'false'."]})
 
     return qs
 
@@ -119,8 +125,15 @@ def get_project_activity(project, *, task_id=None, kind=None):
         .order_by("-event_at", "-id")
     )
     if task_id:
-        qs = qs.filter(task_id=task_id)
+        try:
+            val_uuid = uuid.UUID(str(task_id))
+            qs = qs.filter(task_id=val_uuid)
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError({"task": ["Invalid task ID. Must be a valid UUID."]})
+
     if kind:
+        if kind not in TrackerKind.values:
+            raise ValidationError({"kind": [f"Invalid kind filter value '{kind}'."]})
         qs = qs.filter(kind=kind)
     return qs
 
@@ -133,6 +146,7 @@ def get_my_tasks(user, *, search=None, status=None, overdue=None):
             assignee=user,
             deleted_at__isnull=True,
             project__archived=False,
+            project__in=get_visible_projects(user),
         )
         .select_related("assignee", "project")
         .order_by("-created_at", "-id")
@@ -142,6 +156,8 @@ def get_my_tasks(user, *, search=None, status=None, overdue=None):
         qs = qs.filter(title__icontains=search.strip())
 
     if status:
+        if status not in TaskStatus.values:
+            raise ValidationError({"status": [f"Invalid status filter value '{status}'."]})
         qs = qs.filter(status=status)
 
     if overdue is not None:
@@ -150,36 +166,10 @@ def get_my_tasks(user, *, search=None, status=None, overdue=None):
             qs = qs.exclude(status="DONE").filter(due_date__lt=colombo_today)
         elif overdue in (False, "false", "0"):
             qs = qs.filter(Q(status="DONE") | Q(due_date__isnull=True) | Q(due_date__gte=colombo_today))
+        else:
+            raise ValidationError({"overdue": ["Invalid overdue filter. Must be 'true' or 'false'."]})
 
     return qs
-
-def get_task_for_user(project_id, task_id, user):
-    project = get_project_for_user(project_id, user)
-    if not project:
-        return None
-    return Task.objects.filter(id=task_id, project=project, deleted_at__isnull=True).first()
-
-def get_task_history(project_id, task_id, user):
-    project = get_project_for_user(project_id, user)
-    if not project:
-        return None
-    task = Task.objects.filter(id=task_id, project=project).first()
-    if not task:
-        return None
-    return Tracker.objects.filter(task=task).select_related("actor", "task").order_by("-event_at", "-id")
-
-def get_project_activity(project, *, task_id=None, kind=None):
-    qs = (
-        Tracker.objects.filter(task__project=project)
-        .select_related("actor", "task")
-        .order_by("-event_at", "-id")
-    )
-    if task_id:
-        qs = qs.filter(task_id=task_id)
-    if kind:
-        qs = qs.filter(kind=kind)
-    return qs
-
 
 def compute_project_progress_and_counts(project):
     """

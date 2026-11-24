@@ -195,15 +195,15 @@ All six slices and §7 edge-case requirements are fully implemented, verified, a
 
 1. **Backend Test Suite (PostgreSQL):**
    - Command: `python backend/manage.py test tracker.tests`
-   - Total Tests: 19 tests across 5 test suites (`test_slice1_projects`, `test_slice2_membership`, `test_slice3_task_assignment`, `test_slice4_work_and_history`, `test_slice5_progress_activity`, `test_slice7_edge_cases`).
-   - Result: **19 / 19 passed** (Exit code: 0).
-   - Verifies: Model constraints, transaction write-locking (`select_for_update`), optimistic concurrency (`X-Expected-Version` / `X-Resource-Version`), 412 stale write rejections, 403 member status restriction, rollback on forced failure, soft deletion preserving history, hard deletion history rule (blocked if any task ever existed), bounded query count (no N+1).
+   - Total Tests: 29 tests across 7 test suites (`test_slice1_projects`, `test_slice2_membership`, `test_slice3_task_assignment`, `test_slice4_work_and_history`, `test_slice5_progress_activity`, `test_slice7_edge_cases`, `test_slice7_concurrency`).
+   - Result: **29 / 29 passed** (Exit code: 0).
+   - Verifies: Model constraints, multi-threaded transaction write-locking (`select_for_update`), optimistic concurrency (`X-Expected-Version` / `X-Resource-Version`), 412 stale write rejections, 403 member status restriction, visibility check prior to precondition evaluation, rejection of malformed filters with 400, rollback on forced failure, soft deletion preserving history, hard deletion history rule (blocked if any task ever existed), bounded query count (no N+1), and concurrent race conditions (assignment vs member removal, two edits on same version, project archive vs task creation).
 
 2. **Frontend Test Suite (Vitest + React Testing Library):**
    - Command: `npm --prefix frontend run test:ci`
-   - Total Tests: 7 tests across `components.test.tsx` and `projects.test.tsx`.
-   - Result: **7 / 7 passed** (Exit code: 0).
-   - Verifies: `StatusBadge` overdue boundaries, `ProgressBar` ratio and ARIA attributes, `Feedback` loading/error/empty states, `ProjectsPage` integration rendering.
+   - Total Tests: 10 tests across `components.test.tsx` and `projects.test.tsx`.
+   - Result: **10 / 10 passed** (Exit code: 0).
+   - Verifies: `StatusBadge` overdue boundaries, `ProgressBar` ratio and ARIA attributes, `Feedback` loading/error/empty states, `Modal` dialog focus trapping and keyboard accessibility (Escape handling, ARIA dialog attributes), `formatters` readable assignment and status changes, and `ProjectsPage` integration rendering.
 
 3. **Frontend Production Build & Linter:**
    - `npm --prefix frontend run lint`: **0 errors**.
